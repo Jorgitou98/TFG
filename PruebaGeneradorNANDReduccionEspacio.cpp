@@ -10,17 +10,15 @@
 #include <ctime>
 #include <mutex>
 #include <thread>
+#include <map>
 
-#define MAXCIRCUITOS 10000000
+#define MAXCIRCUITOS 500000000
 
 std::mutex mtxGenerador;
 std::ofstream fs("ficheroSalida" + std::to_string(MAXCIRCUITOS) + "NuevaRep.txt");
 unsigned int circuitosGenerados = 0;
 bool pararAlgoritmo = false;
 
-// Cuando anotemos los sobrante aqui tendremos las nuevas funciones computadas.
-// Permite no escribir en el almacen lo que resultaría más caro
-std::unordered_set<unsigned int> computadasSobrantes;
 
 #pragma pack (2)
 struct circuito {
@@ -47,7 +45,7 @@ struct circuitoCable : public circuito {
 };
 
 // Mapa de tamaños a circuitos de ese tamaño calculados que deben ser anotados
-std::unordered_map<short, std::vector<circuito*>> espera;
+std::map<short, std::vector<circuito*>> espera;
 
 // Mapa de funciones computadas a vector de circuitos que la computan (de izquierda a derecha creciente de tamaño)
 std::unordered_map<unsigned int, std::vector<circuito*>> almacen;
@@ -199,6 +197,10 @@ void tareaGeneraCircuitos(short n, size_t ini, size_t fin) {
 				mtxGenerador.unlock();
 				return;
 			}
+			else if (circuitosGenerados % 1000000 == 0) {
+				std::cout << circuitosGenerados << '\n';
+				mtxGenerador.unlock();
+			}
 			else mtxGenerador.unlock();
 		}
 
@@ -221,13 +223,15 @@ void tareaGeneraCircuitos(short n, size_t ini, size_t fin) {
 					mtxGenerador.unlock();
 					return;
 				}
+				else if (circuitosGenerados % 1000000 == 0) {
+					std::cout << circuitosGenerados << '\n';
+					mtxGenerador.unlock();
+				}
 				else mtxGenerador.unlock();
 			}
 		}
 	}
 }
-
-
 
 
 void generaCircuitos(short n) {
@@ -266,41 +270,24 @@ inline void quitaCircuitosEspera(short n) {
 }
 
 
-void tareaAnotaSobrantes(std::vector<circuito*> const& v, int ini, int fin) {
-	for (int i = ini; i < fin; ++i) {
-		circuito* circ = v[i];
-		unsigned int eval = evaluacion(circ);
-		mtxGenerador.lock();
-		if (!almacen.count(eval) && !computadasSobrantes.count(eval)) {
-			computadasSobrantes.insert(eval);
-			fs << circ;
-		}
-		mtxGenerador.unlock();
-		delete circ;
-	}
-}
-
-
-void anotaSobrantes() {
-	std::vector<std::pair<short, std::vector<circuito*>>> sobrantes(espera.size());
-	std::transform(espera.begin(), espera.end(), sobrantes.begin(), [](auto pair) {return std::move(pair); });
-	espera.clear();
-	sort(sobrantes.begin(), sobrantes.end(), [](auto pair1, auto pair2) {return pair1.first < pair2.first; });
-	for (auto par : sobrantes) {
-
-		int numProcesadores = std::thread::hardware_concurrency();
-		int tamProceso = par.second.size() / numProcesadores;
-		std::vector<std::thread> hilos(numProcesadores);
-		for (int i = 0; i < numProcesadores; ++i) {
-			if (i < numProcesadores - 1) hilos[i] = std::thread(tareaAnotaSobrantes, par.second, i * tamProceso, (i + 1) * tamProceso);
-			else hilos[i] = std::thread(tareaAnotaSobrantes, par.second, i * tamProceso, par.second.size());
-		}
-		for (int i = 0; i < numProcesadores; ++i) {
-			hilos[i].join();
+int anotaSobrantes() {
+	// Cuando anotemos los sobrante aqui tendremos las nuevas funciones computadas.
+	// Permite no escribir en el almacen lo que resultaría más caro
+	std::unordered_set<unsigned int> computadasSobrantes;
+	for (auto par : espera) {
+		for (circuito* circ : par.second) {
+			unsigned int eval = evaluacion(circ);
+			if (!almacen.count(eval) && !computadasSobrantes.count(eval)) {
+				computadasSobrantes.insert(eval);
+				fs << circ;
+			}
+			delete circ;
 		}
 		std::cout << "Size " << par.first << " anotado\n";
 	}
+	return computadasSobrantes.size();
 }
+
 
 inline void muestraSobrantes() {
 	for (auto par : espera) {
@@ -333,9 +320,9 @@ int main() {
 	muestraSobrantes();
 	std::cout << "\n";
 	std::cout << "Procesando... \n";
-	anotaSobrantes();
-	std::cout << "Total de funciones distintas computadas " << almacen.size() + computadasSobrantes.size() << '\n';
-	fs << "Total de funciones distintas computadas: " << almacen.size() + computadasSobrantes.size() << '\n';
+	int computadasSobrantes = anotaSobrantes();
+	std::cout << "Total de funciones distintas computadas " << almacen.size() + computadasSobrantes << '\n';
+	fs << "Total de funciones distintas computadas: " << almacen.size() + computadasSobrantes << '\n';
 	liberaAlmacen();
 	t1 = clock();
 	double time = (double(t1 - t0) / CLOCKS_PER_SEC);
