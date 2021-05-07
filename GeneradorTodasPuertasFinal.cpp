@@ -17,8 +17,10 @@ unsigned int maxcircuitos;
 std::mutex mtxGenerador;
 unsigned int circuitosGenerados = 0;
 bool pararAlgoritmo = false;
-//String con las letas correspondientes a las puertas del repertorio
+//String con las letras correspondientes a las puertas del repertorio
 std::string puertasBinarias = "aonOxXlrLR";
+std::ofstream fs;
+size_t computadasSobrantes = 0;
 
 
 #pragma pack (1)
@@ -38,16 +40,6 @@ struct circuito {
 	}
 };
 
-#pragma pack (2)
-struct circuitoCable : public circuito {
-	unsigned int eval;
-	circuitoCable(circuito* padreIzq, circuito* padreDer, unsigned int eval, short tam) {
-		this->padreIzq = padreIzq;
-		this->padreDer = padreDer;
-		this->eval = eval;
-		this->tam = tam;
-	}
-};
 
 // Mapa de tamaños a circuitos de ese tamaño calculados que deben ser anotados
 std::map<short, std::vector<circuito*>> espera;
@@ -56,33 +48,29 @@ std::map<short, std::vector<circuito*>> espera;
 std::unordered_map<unsigned int, std::vector<circuito*>> almacen;
 
 
-unsigned int evaluacion(circuito* circ) {
-	if (circ->padreIzq == nullptr && circ->padreDer == nullptr) {
-		circuitoCable* cable = (circuitoCable*)circ;
-		return cable->eval;
-	}
+unsigned int evaluacion(circuito* circ1, circuito* circ2, char puerta) {
 	// Puerta AND
-	else if (circ->puerta == 'a') return evaluacion(circ->padreIzq) & evaluacion(circ->padreDer);
+	if (puerta == 'a') return circ1->eval & circ2->eval;
 	// Puerta OR
-	else if (circ->puerta == 'o') return evaluacion(circ->padreIzq) | evaluacion(circ->padreDer);
+	else if (puerta == 'o') return circ1->eval | circ2->eval;
 	// Puerta NOT
-	else if (circ->puerta == 'N') return ~evaluacion(circ->padreIzq);
+	else if (puerta == 'N') return ~circ1->eval;
 	// Puerta NAND
-	else if (circ->puerta == 'n') return ~(evaluacion(circ->padreIzq) & evaluacion(circ->padreDer));
+	else if (puerta == 'n') return ~(circ1->eval & circ2->eval);
 	// Puerta NOR
-	else if (circ->puerta == 'O') return  ~(evaluacion(circ->padreIzq) | evaluacion(circ->padreDer));
+	else if (puerta == 'O') return  ~(circ1->eval | circ2->eval);
 	// Puerta XOR
-	else if (circ->puerta == 'x') return  evaluacion(circ->padreIzq) ^ evaluacion(circ->padreDer);
+	else if (puerta == 'x') return circ1->eval ^ circ2->eval;
 	// Puerta XNOR
-	else if (circ->puerta == 'X') return  ~(evaluacion(circ->padreIzq) ^ evaluacion(circ->padreDer));
+	else if (puerta == 'X') return  ~(circ1->eval ^ circ2->eval);
 	// Puerta LONLY
-	else if (circ->puerta == 'l') return  evaluacion(circ->padreIzq) & (~evaluacion(circ->padreDer));
+	else if (puerta == 'l') return  circ1->eval & (~circ2->eval);
 	// Puerta RONLY
-	else if (circ->puerta == 'r') return  (~evaluacion(circ->padreIzq)) & evaluacion(circ->padreDer);
+	else if (puerta == 'r') return  (~circ1->eval) & circ2->eval;
 	// Puerta NLONLY
-	else if (circ->puerta == 'L') return  ~(evaluacion(circ->padreIzq) & (~evaluacion(circ->padreDer)));
+	else if (puerta == 'L') return  ~(circ1->eval & (~circ2->eval));
 	// Puerta NRONLY
-	else if (circ->puerta == 'R') return  ~((~evaluacion(circ->padreIzq)) & evaluacion(circ->padreDer));
+	else if (puerta == 'R') return  ~((~circ1->eval) & circ2->eval);
 }
 
 // Pinta el circuito como árbol binario
@@ -94,12 +82,11 @@ void printBT(std::ostream& o, const std::string& prefix, circuito const* circ, b
 
 	// Mostramos el cable o la puerta que es
 	if (circ->padreIzq == nullptr && circ->padreDer == nullptr) {
-		circuitoCable* cable = (circuitoCable*)circ;
-		if (cable->eval == 2863311530) o << "X0\n";
-		else if (cable->eval == 3435973836) o << "X1\n";
-		else if (cable->eval == 4042322160) o << "X2\n";
-		else if (cable->eval == 4278255360) o << "X3\n";
-		else if (cable->eval == 4294901760) o << "X4\n";
+		if (circ->eval == 2863311530) o << "X0\n";
+		else if (circ->eval == 3435973836) o << "X1\n";
+		else if (circ->eval == 4042322160) o << "X2\n";
+		else if (circ->eval == 4278255360) o << "X3\n";
+		else if (circ->eval == 4294901760) o << "X4\n";
 	}
 	// Puerta AND
 	else if (circ->puerta == 'a') {
@@ -184,18 +171,17 @@ void muestraCircuitoDetalle(std::ostream& o, circuito* const& circ) {
 	o << "\n";
 	printBT(o, "", circ, false);
 	o << " Evaluacion: ";
-	bin(o, evaluacion(circ));
+	bin(o, circ->eval);
 	o << "\n\n";
 }
 
 void preordenRecursivo(std::ostream& o, circuito* const& circ) {
 	if (circ->padreIzq == nullptr && circ->padreDer == nullptr) {
-		circuitoCable* cable = (circuitoCable*)circ;
-		if (cable->eval == 2863311530) o << '0';
-		else if (cable->eval == 3435973836) o << '1';
-		else if (cable->eval == 4042322160) o << '2';
-		else if (cable->eval == 4278255360) o << '3';
-		else if (cable->eval == 4294901760) o << '4';
+		if (circ->eval == 2863311530) o << '0';
+		else if (circ->eval == 3435973836) o << '1';
+		else if (circ->eval == 4042322160) o << '2';
+		else if (circ->eval == 4278255360) o << '3';
+		else if (circ->eval == 4294901760) o << '4';
 	}
 	else if (circ->puerta == 'N') {
 		o << circ->puerta;
@@ -204,14 +190,14 @@ void preordenRecursivo(std::ostream& o, circuito* const& circ) {
 	else {
 		o << circ->puerta;
 		preordenRecursivo(o, circ->padreIzq);
-		preordenRecursivo(o, circ->padreDer);	
+		preordenRecursivo(o, circ->padreDer);
 	}
 }
 
 
 std::ostream& operator<<(std::ostream& o, circuito* circ) {
 	preordenRecursivo(o, circ);
-	o << " " << circ->tam << " " << evaluacion(circ) << '\n';
+	o << " " << circ->tam << " " << circ->eval << '\n';
 	return o;
 }
 
@@ -243,19 +229,19 @@ void mezclar(circuito* circuito1, circuito* circuito2, short& tam) {
 void inicializa() {
 	espera[0] = std::vector<circuito*>();
 
-	circuito* circ = new circuitoCable(nullptr, nullptr, 2863311530, 0);
+	circuito* circ = new circuito(nullptr, nullptr, 2863311530, 0, 'C');
 	espera[0].push_back(circ);
 
-	circ = new circuitoCable(nullptr, nullptr, 3435973836, 0);
+	circ = new circuito(nullptr, nullptr, 3435973836, 0, 'C');
 	espera[0].push_back(circ);
 
-	circ = new circuitoCable(nullptr, nullptr, 4042322160, 0);
+	circ = new circuito(nullptr, nullptr, 4042322160, 0, 'C');
 	espera[0].push_back(circ);
 
-	circ = new circuitoCable(nullptr, nullptr, 4278255360, 0);
+	circ = new circuito(nullptr, nullptr, 4278255360, 0, 'C');
 	espera[0].push_back(circ);
 
-	circ = new circuitoCable(nullptr, nullptr, 4294901760, 0);
+	circ = new circuito(nullptr, nullptr, 4294901760, 0, 'C');
 	espera[0].push_back(circ);
 
 }
@@ -274,7 +260,7 @@ void tareaGeneraCircuitos(short n, size_t ini, size_t fin) {
 				mezclar(circuito1, circuito2, tam);
 				mtxGenerador.lock();
 				if (!espera.count(tam)) espera[tam] = std::vector<circuito*>();
-				espera[tam].push_back(new circuito(circuito1, circuito2, tam, puerta));
+				espera[tam].push_back(new circuito(circuito1, circuito2, evaluacion(circuito1,circuito2, puerta), tam, puerta));
 				circuitosGenerados++;
 				if (pararAlgoritmo) {
 					mtxGenerador.unlock();
@@ -300,7 +286,7 @@ void tareaGeneraCircuitos(short n, size_t ini, size_t fin) {
 					mezclar(circuito1, circuito2, tam);
 					mtxGenerador.lock();
 					if (!espera.count(tam)) espera[tam] = std::vector<circuito*>();
-					espera[tam].push_back(new circuito(circuito1, circuito2, tam, puerta));
+					espera[tam].push_back(new circuito(circuito1, circuito2, evaluacion(circuito1, circuito2, puerta), tam, puerta));
 					circuitosGenerados++;
 					if (pararAlgoritmo) {
 						mtxGenerador.unlock();
@@ -325,7 +311,7 @@ void tareaGeneraCircuitos(short n, size_t ini, size_t fin) {
 		int tam = circuito1->tam + 1;
 		mtxGenerador.lock();
 		if (!espera.count(tam)) espera[tam] = std::vector<circuito*>();
-		espera[tam].push_back(new circuito(circuito1, nullptr, tam, 'N'));
+		espera[tam].push_back(new circuito(circuito1, nullptr, evaluacion(circuito1, nullptr, 'N'), tam, 'N'));
 		circuitosGenerados++;
 		if (pararAlgoritmo) {
 			mtxGenerador.unlock();
@@ -341,7 +327,7 @@ void tareaGeneraCircuitos(short n, size_t ini, size_t fin) {
 			mtxGenerador.unlock();
 		}
 		else mtxGenerador.unlock();
-	}	
+	}
 }
 
 void generaCircuitos(short n) {
@@ -360,10 +346,10 @@ void generaCircuitos(short n) {
 
 }
 
-void anotaCircuitos(short n, std::ofstream &fs) {
+void anotaCircuitos(short n) {
 	if (!espera.count(n)) return;
 	for (circuito* circ : espera[n]) {
-		unsigned int eval = evaluacion(circ);
+		unsigned int eval = circ->eval;
 		if (!almacen.count(eval)) {
 			almacen[eval] = std::vector<circuito*>();
 			fs << circ;
@@ -380,12 +366,13 @@ inline void quitaCircuitosEspera(short n) {
 }
 
 
-void tareaAnotaSobrantes(std::ofstream& fs, std::vector<circuito*> const& v, int ini, int fin) {
+void tareaAnotaSobrantes(std::vector<circuito*> const& v, int ini, int fin) {
 	for (int i = ini; i < fin; ++i) {
 		circuito* circ = v[i];
 		mtxGenerador.lock();
-		if(!almacen.count(circ->eval)){
+		if (!almacen.count(circ->eval)) {
 			almacen[circ->eval] = std::vector<circuito*>();
+			computadasSobrantes++;
 			fs << circ;
 		}
 		mtxGenerador.unlock();
@@ -394,7 +381,7 @@ void tareaAnotaSobrantes(std::ofstream& fs, std::vector<circuito*> const& v, int
 }
 
 
-void anotaSobrantes(std::ofstream& fs) {
+void anotaSobrantes() {
 	std::vector<std::pair<int, std::vector<circuito*>>> sobrantes(espera.size());
 	std::transform(espera.begin(), espera.end(), sobrantes.begin(), [](auto pair) {return std::move(pair); });
 	espera.clear();
@@ -405,8 +392,8 @@ void anotaSobrantes(std::ofstream& fs) {
 		int tamProceso = par.second.size() / numProcesadores;
 		std::vector<std::thread> hilos(numProcesadores);
 		for (int i = 0; i < numProcesadores; ++i) {
-			if (i < numProcesadores - 1) hilos[i] = std::thread(tareaAnotaSobrantes, fs, par.second, i * tamProceso, (i + 1) * tamProceso);
-			else hilos[i] = std::thread(tareaAnotaSobrantes, fs, par.second, i * tamProceso, par.second.size());
+			if (i < numProcesadores - 1) hilos[i] = std::thread(tareaAnotaSobrantes, par.second, i * tamProceso, (i + 1) * tamProceso);
+			else hilos[i] = std::thread(tareaAnotaSobrantes, par.second, i * tamProceso, par.second.size());
 		}
 		for (int i = 0; i < numProcesadores; ++i) {
 			hilos[i].join();
@@ -441,12 +428,12 @@ int main() {
 	std::string nombreFichero;
 	std::cout << "Nombre del fichero de salida:\n";
 	std::cin >> nombreFichero;
-	std::ofstream fs(nombreFichero);
+	fs = std::ofstream(nombreFichero);
 	inicializa();
 	int tamano = 0;
 	while (!pararAlgoritmo) {
 		generaCircuitos(tamano);
-		anotaCircuitos(tamano, fs);
+		anotaCircuitos(tamano);
 		quitaCircuitosEspera(tamano);
 		tamano++;
 	}
@@ -454,7 +441,7 @@ int main() {
 	muestraSobrantes();
 	std::cout << "\n";
 	std::cout << "Procesando... \n";
-	size_t computadasSobrantes = anotaSobrantes(fs);
+	anotaSobrantes();
 	std::cout << "Total de funciones distintas computadas " << almacen.size() + computadasSobrantes << '\n';
 	fs << "Total de funciones distintas computadas: " << almacen.size() + computadasSobrantes << '\n';
 	liberaAlmacen();
