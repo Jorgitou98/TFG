@@ -380,26 +380,41 @@ inline void quitaCircuitosEspera(short n) {
 }
 
 
-size_t anotaSobrantes(std::ofstream& fs) {
-	// Cuando anotemos los sobrantes aqui tendremos las nuevas funciones computadas.
-	// Permite no escribir en el almacen lo que resultaría más caro
-	std::unordered_set<unsigned int> computadasSobrantes;
-	for (auto par : espera) {
-		for (circuito* circ : par.second) {
-			unsigned int eval = evaluacion(circ);
-			if (!almacen.count(eval) && !computadasSobrantes.count(eval)) {
-				computadasSobrantes.insert(eval);
-				fs << circ;
-			}
-			delete circ;
+void tareaAnotaSobrantes(std::ofstream& fs, std::vector<circuito*> const& v, int ini, int fin) {
+	for (int i = ini; i < fin; ++i) {
+		circuito* circ = v[i];
+		mtxGenerador.lock();
+		if(!almacen.count(circ->eval)){
+			almacen[circ->eval] = std::vector<circuito*>();
+			fs << circ;
 		}
-		par.second.clear();
+		mtxGenerador.unlock();
+		delete circ;
+	}
+}
 
+
+void anotaSobrantes(std::ofstream& fs) {
+	std::vector<std::pair<int, std::vector<circuito*>>> sobrantes(espera.size());
+	std::transform(espera.begin(), espera.end(), sobrantes.begin(), [](auto pair) {return std::move(pair); });
+	espera.clear();
+	sort(sobrantes.begin(), sobrantes.end(), [](auto pair1, auto pair2) {return pair1.first < pair2.first; });
+	for (auto par : sobrantes) {
+
+		int numProcesadores = std::thread::hardware_concurrency();
+		int tamProceso = par.second.size() / numProcesadores;
+		std::vector<std::thread> hilos(numProcesadores);
+		for (int i = 0; i < numProcesadores; ++i) {
+			if (i < numProcesadores - 1) hilos[i] = std::thread(tareaAnotaSobrantes, fs, par.second, i * tamProceso, (i + 1) * tamProceso);
+			else hilos[i] = std::thread(tareaAnotaSobrantes, fs, par.second, i * tamProceso, par.second.size());
+		}
+		for (int i = 0; i < numProcesadores; ++i) {
+			hilos[i].join();
+		}
 		std::cout << "Size " << par.first << " anotado\n";
 	}
-	espera.clear();
-	return computadasSobrantes.size();
 }
+
 
 
 inline void muestraSobrantes() {
