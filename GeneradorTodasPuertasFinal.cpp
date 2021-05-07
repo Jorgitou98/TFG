@@ -210,7 +210,7 @@ void introduceEnSet(std::set<circuito*>& set, circuito* circ) {
 	}
 }
 
-void mezclar(circuito* circuito1, circuito* circuito2, short& tam) {
+void mezclar(circuito* circuito1, circuito* circuito2, int& tam) {
 
 	std::set<circuito*> set1, set2;
 	introduceEnSet(set1, circuito1);
@@ -256,7 +256,7 @@ void tareaGeneraCircuitos(short n, size_t ini, size_t fin) {
 			// Cruzo el circuito con todos los de su tamaño con los que no se haya cruzado ya
 			for (size_t j = i + 1; j < espera[n].size(); ++j) {
 				circuito* circuito2 = espera[n][j];
-				short tam = circuito1->tam + circuito2->tam + 1;
+				int tam = circuito1->tam + circuito2->tam + 1;
 				mezclar(circuito1, circuito2, tam);
 				mtxGenerador.lock();
 				if (!espera.count(tam)) espera[tam] = std::vector<circuito*>();
@@ -282,7 +282,7 @@ void tareaGeneraCircuitos(short n, size_t ini, size_t fin) {
 			for (auto par2 : almacen) {
 				for (circuito* circuito2 : par2.second) {
 					if (circuito1 == circuito2) break;
-					short tam = circuito1->tam + circuito2->tam + 1;
+					int tam = circuito1->tam + circuito2->tam + 1;
 					mezclar(circuito1, circuito2, tam);
 					mtxGenerador.lock();
 					if (!espera.count(tam)) espera[tam] = std::vector<circuito*>();
