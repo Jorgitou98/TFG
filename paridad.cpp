@@ -3,7 +3,7 @@
 #include <fstream>
 using namespace std;
 
-int parUnos(int num, int n) {
+bool parUnos(int num, int n) {
 	int unos = 0;
 	for (int i = 0; i < n; ++i) {
 		if (num % 2 == 1) unos++;

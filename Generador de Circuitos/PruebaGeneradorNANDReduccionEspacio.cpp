@@ -12,20 +12,21 @@
 #include <thread>
 #include <map>
 
-#define MAXCIRCUITOS 500000000
+#define MAXCIRCUITOS 400000000
 
 std::mutex mtxGenerador;
-std::ofstream fs("ficheroSalida" + std::to_string(MAXCIRCUITOS) + "NuevaRep.txt");
 unsigned int circuitosGenerados = 0;
 bool pararAlgoritmo = false;
-
+unsigned int ultimoValorComputadasMillon = 0;
+std::unordered_set<unsigned int> funcionesComputadas;
+std::ofstream fsPorcentajes("porcentajesFuncionesDiferentes" + std::to_string(MAXCIRCUITOS / 1000000) + ".txt");
 
 #pragma pack (2)
 struct circuito {
 	circuito* padreIzq;
 	circuito* padreDer;
 	short tam;
-	circuito(){}
+	circuito() {}
 	circuito(circuito* padreIzq, circuito* padreDer, short tam) {
 		this->padreIzq = padreIzq;
 		this->padreDer = padreDer;
@@ -57,75 +58,6 @@ unsigned int evaluacion(circuito* circ) {
 		return cable->eval;
 	}
 	else return ~(evaluacion(circ->padreIzq) & evaluacion(circ->padreDer));
-}
-
-// Pinta el circuito como árbol binario
-unsigned int printBT(std::ostream& o, const std::string& prefix, circuito const* circ, bool isRight)
-{
-		o << prefix;
-
-		o << "|--";
-
-		// Mostramos el cable o la puerta que es
-		if (circ->padreIzq == nullptr && circ->padreDer == nullptr) {
-			circuitoCable* cable = (circuitoCable*)circ;
-			if (cable->eval == 2863311530) o << "X0\n";
-			else if (cable->eval == 3435973836) o << "X1\n";
-			else if (cable->eval == 4042322160) o << "X2\n";
-			else if (cable->eval == 4278255360) o << "X3\n";
-			else if (cable->eval == 4294901760) o << "X4\n";
-			return cable->eval;
-		}
-		else {
-			o << "NAND\n";
-			unsigned int evalDer = printBT(o, prefix + (isRight ? "|   " : "    "), circ->padreDer, true);
-			unsigned int evalIzq = printBT(o, prefix + (isRight ? "|   " : "    "), circ->padreIzq, false);
-			return ~(evalIzq & evalDer);
-		}
-
-}
-
-void bin(std::ostream& o, unsigned int n)
-{
-	unsigned int num = n;
-	for (int i = 0; i < 32; ++i) {
-		o << (num & 1);
-		num = num >> 1;
-	}
-}
-
-void muestraCircuitoDetalle(std::ostream& o, circuito* const& circ) {
-	o << "Size: " << circ->tam;
-	o << "\n";
-	unsigned int eval = printBT(o, "", circ, false);
-	o << " Evaluacion: ";
-	bin(o, evaluacion(circ));
-	o << "\n\n";
-}
-
-unsigned int preordenRecursivo(std::ostream& o, circuito* const& circ) {
-	if (circ->padreIzq == nullptr && circ->padreDer == nullptr) {
-		circuitoCable* cable = (circuitoCable*) circ;
-		if (cable->eval == 2863311530) o << '0';
-		else if (cable->eval == 3435973836) o << '1';
-		else if (cable->eval == 4042322160) o << '2';
-		else if (cable->eval == 4278255360) o << '3';
-		else if (cable->eval == 4294901760) o << '4';
-		return cable->eval;
-	}
-	else {
-		o << 'n';
-		unsigned int evalIzq = preordenRecursivo(o, circ->padreIzq);
-		unsigned int evalDer = preordenRecursivo(o, circ->padreDer);
-		return ~(evalIzq & evalDer);
-	}
-}
-
-
-std::ostream& operator<<(std::ostream& o, circuito* circ) {
-	unsigned int eval = preordenRecursivo(o, circ);
-	o << " " << circ->tam << " " << eval << '\n';
-	return o;
 }
 
 
@@ -186,8 +118,13 @@ void tareaGeneraCircuitos(short n, size_t ini, size_t fin) {
 			mezclar(circuito1, circuito2, tam);
 			mtxGenerador.lock();
 			if (!espera.count(tam)) espera[tam] = std::vector<circuito*>();
-			espera[tam].push_back(new circuito(circuito1, circuito2, tam));
+			circuito* circ = new circuito(circuito1, circuito2, tam);
+			espera[tam].push_back(circ);
 			circuitosGenerados++;
+			unsigned int eval = evaluacion(circ);
+			if (!funcionesComputadas.count(eval)) {
+				funcionesComputadas.insert(eval);
+			}
 			if (pararAlgoritmo) {
 				mtxGenerador.unlock();
 				return;
@@ -198,7 +135,11 @@ void tareaGeneraCircuitos(short n, size_t ini, size_t fin) {
 				return;
 			}
 			else if (circuitosGenerados % 1000000 == 0) {
-				std::cout << circuitosGenerados << '\n';
+				std::cout << circuitosGenerados / 1000000 << '\n';
+				unsigned int computadasNuevas = funcionesComputadas.size() - ultimoValorComputadasMillon;
+				ultimoValorComputadasMillon = funcionesComputadas.size();
+				std::cout << computadasNuevas << '\n';
+				fsPorcentajes << computadasNuevas << '\n';
 				mtxGenerador.unlock();
 			}
 			else mtxGenerador.unlock();
@@ -212,8 +153,13 @@ void tareaGeneraCircuitos(short n, size_t ini, size_t fin) {
 				mezclar(circuito1, circuito2, tam);
 				mtxGenerador.lock();
 				if (!espera.count(tam)) espera[tam] = std::vector<circuito*>();
-				espera[tam].push_back(new circuito(circuito1, circuito2, tam));
+				circuito* circ = new circuito(circuito1, circuito2, tam);
+				espera[tam].push_back(circ);
 				circuitosGenerados++;
+				unsigned int eval = evaluacion(circ);
+				if (!funcionesComputadas.count(eval)) {
+					funcionesComputadas.insert(eval);
+				}
 				if (pararAlgoritmo) {
 					mtxGenerador.unlock();
 					return;
@@ -224,7 +170,10 @@ void tareaGeneraCircuitos(short n, size_t ini, size_t fin) {
 					return;
 				}
 				else if (circuitosGenerados % 1000000 == 0) {
-					std::cout << circuitosGenerados << '\n';
+					std::cout << circuitosGenerados / 1000000 << '\n';
+					float porcentaje = (float)funcionesComputadas.size() / (float)circuitosGenerados * 100;
+					std::cout << porcentaje << '\n';
+					fsPorcentajes << porcentaje << '\n';
 					mtxGenerador.unlock();
 				}
 				else mtxGenerador.unlock();
@@ -256,12 +205,10 @@ void anotaCircuitos(short n) {
 		unsigned int eval = evaluacion(circ);
 		if (!almacen.count(eval)) {
 			almacen[eval] = std::vector<circuito*>();
-			fs << circ;
 		}
 		almacen[eval].push_back(circ);
 	}
 	std::cout << "Size " << n << " anotado\n";
-
 }
 
 inline void quitaCircuitosEspera(short n) {
@@ -269,31 +216,6 @@ inline void quitaCircuitosEspera(short n) {
 	espera.erase(n);
 }
 
-
-int anotaSobrantes() {
-	// Cuando anotemos los sobrante aqui tendremos las nuevas funciones computadas.
-	// Permite no escribir en el almacen lo que resultaría más caro
-	std::unordered_set<unsigned int> computadasSobrantes;
-	for (auto par : espera) {
-		for (circuito* circ : par.second) {
-			unsigned int eval = evaluacion(circ);
-			if (!almacen.count(eval) && !computadasSobrantes.count(eval)) {
-				computadasSobrantes.insert(eval);
-				fs << circ;
-			}
-			delete circ;
-		}
-		std::cout << "Size " << par.first << " anotado\n";
-	}
-	return computadasSobrantes.size();
-}
-
-
-inline void muestraSobrantes() {
-	for (auto par : espera) {
-		std::cout << par.second.size() << " circuitos de tamano " << par.first << " por procesar\n";
-	}
-}
 
 inline void liberaAlmacen() {
 	for (auto par : almacen) {
@@ -304,6 +226,16 @@ inline void liberaAlmacen() {
 	}
 	almacen.clear();
 }
+
+inline void liberaEspera() {
+	for (auto par : espera) {
+		for (circuito* circ : par.second) {
+			delete circ;
+		}
+	}
+	espera.clear();
+}
+
 
 int main() {
 	unsigned t0, t1;
@@ -316,17 +248,11 @@ int main() {
 		quitaCircuitosEspera(tamano);
 		tamano++;
 	}
-	std::cout << "Circuitos generados exhaustivamente hasta size " << tamano - 1 << '\n';
-	muestraSobrantes();
-	std::cout << "\n";
-	std::cout << "Procesando... \n";
-	int computadasSobrantes = anotaSobrantes();
-	std::cout << "Total de funciones distintas computadas " << almacen.size() + computadasSobrantes << '\n';
-	fs << "Total de funciones distintas computadas: " << almacen.size() + computadasSobrantes << '\n';
-	liberaAlmacen();
+	//liberaEspera();
+	//liberaAlmacen();
 	t1 = clock();
 	double time = (double(t1 - t0) / CLOCKS_PER_SEC);
-	fs << "Tiempo de ejecucion: " << time << "\n";
-	fs.close();
+	fsPorcentajes << "Tiempo de ejecucion: " << time << "\n";
+	fsPorcentajes.close();
 	return 0;
 }
